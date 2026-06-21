@@ -43,7 +43,7 @@ Este plugin transforma contenido de video pasivo en experiencias de aprendizaje 
 
 ## Requisitos
 
-- Moodle 4.0 o superior (probado en Moodle 5.3 Dev)
+- Moodle 5.0 o superior (probado en Moodle 5.3 Dev)
 - PHP 8.x
 - Base de datos: PostgreSQL, MariaDB o MySQL
 - Navegador moderno con soporte para HTML5 Video API y ES6+
