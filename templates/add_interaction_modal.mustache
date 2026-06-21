@@ -1,0 +1,229 @@
+{{!
+    Authoring modal for mod_vidinteractivo interactions.
+}}
+<div class="vidinteractivo-modal-form container-fluid">
+    <div class="row">
+        <div class="col-md-7">
+            <div class="form-group mb-3">
+                <label><strong>{{#str}} interactiontype, mod_vidinteractivo {{/str}}</strong></label>
+                <select class="form-select custom-select" name="type">
+                    {{#types}}
+                        <option value="{{value}}" {{#selected}}selected{{/selected}}>{{label}}</option>
+                    {{/types}}
+                </select>
+            </div>
+            <div class="form-group mb-3">
+                <label><strong>{{#str}} title, mod_vidinteractivo {{/str}}</strong></label>
+                <input type="text" class="form-control" name="interaction-title" value="{{title}}">
+            </div>
+        </div>
+        <div class="col-md-5">
+            <label><strong>Inicio</strong></label>
+            <div class="row mb-2">
+                <div class="col-6">
+                    <input type="number" class="form-control" name="timestamp-min" min="0" value="{{timestamp_min}}" placeholder="Min">
+                </div>
+                <div class="col-6">
+                    <input type="number" class="form-control" name="timestamp-sec" min="0" max="59" value="{{timestamp_sec}}" placeholder="Seg">
+                </div>
+            </div>
+            <label><strong>Fin (Opcional)</strong></label>
+            <div class="row">
+                <div class="col-6">
+                    <input type="number" class="form-control" name="timeend-min" min="0" value="{{timeend_min}}" placeholder="Min">
+                </div>
+                <div class="col-6">
+                    <input type="number" class="form-control" name="timeend-sec" min="0" max="59" value="{{timeend_sec}}" placeholder="Seg">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <hr>
+
+    <div id="sec-html" class="interaction-type-section" style="display: none;">
+        <label><strong>{{#str}} htmlcontent, mod_vidinteractivo {{/str}}</strong></label>
+        <textarea class="form-control" name="html-text" rows="5">{{contentData.html}}</textarea>
+    </div>
+
+    <div id="sec-capture" class="interaction-type-section" style="display: none;">
+        <label><strong>{{#str}} capturemessage, mod_vidinteractivo {{/str}}</strong></label>
+        <textarea class="form-control" name="capture-text" rows="4">{{contentData.capture}}</textarea>
+    </div>
+
+    <div id="sec-multiplechoice" class="interaction-type-section" style="display: none;">
+        <div id="mcq-questions-container"></div>
+        <button type="button" id="btn-add-mcq-question" class="btn btn-sm btn-outline-primary mt-2"><i class="fa fa-plus"></i> Añadir otra pregunta al bloque</button>
+    </div>
+
+    <div id="sec-truefalse" class="interaction-type-section" style="display: none;">
+        <div id="tf-questions-container"></div>
+        <button type="button" id="btn-add-tf-question" class="btn btn-sm btn-outline-primary mt-2"><i class="fa fa-plus"></i> Añadir otra pregunta al bloque</button>
+    </div>
+
+    <div id="sec-imageselection" class="interaction-type-section" style="display: none;">
+        <label><strong>{{#str}} questiontext, mod_vidinteractivo {{/str}}</strong></label>
+        <input type="text" class="form-control mb-3" name="image-prompt" value="{{contentData.prompt}}">
+        <label><strong>{{#str}} imageurl, mod_vidinteractivo {{/str}}</strong></label>
+        <input type="url" class="form-control mb-3" name="image-url" value="{{contentData.imageurl}}">
+        <div id="image-selection-preview-container" style="display: none; margin-bottom: 15px;">
+            <p class="small text-muted mb-2"><i class="fa fa-info-circle"></i> Haz clic y arrastra sobre la imagen para crear áreas interactivas.</p>
+            <div id="image-selection-wrapper" style="position: relative; display: inline-block; max-width: 100%; user-select: none;">
+                <img id="image-selection-preview" style="max-width: 100%; display: block; border: 1px solid #ccc; border-radius: 4px; cursor: crosshair;" draggable="false">
+                <div id="image-boxes-container"></div>
+            </div>
+            <div id="image-areas-list" class="mt-3"></div>
+        </div>
+        <textarea class="form-control d-none" name="image-areas" rows="4">{{contentData.areas}}</textarea>
+    </div>
+
+    <div id="sec-dragdrop" class="interaction-type-section" style="display: none;">
+        <label><strong>{{#str}} questiontext, mod_vidinteractivo {{/str}}</strong></label>
+        <input type="text" class="form-control mb-3" name="drag-prompt" value="{{contentData.prompt}}">
+        
+        <div class="row">
+            <div class="col-md-6 border-end">
+                <label><strong>Zonas de Destino</strong></label>
+                <div id="drag-zones-container" class="mb-2"></div>
+                <button type="button" class="btn btn-sm btn-outline-primary mb-3" id="btn-add-drag-zone"><i class="fa fa-plus"></i> Añadir Zona</button>
+            </div>
+            <div class="col-md-6">
+                <label><strong>Elementos Arrastrables (Respuestas)</strong></label>
+                <div id="drag-items-container" class="mb-2"></div>
+                <button type="button" class="btn btn-sm btn-outline-primary mb-3" id="btn-add-drag-item"><i class="fa fa-plus"></i> Añadir Elemento</button>
+            </div>
+        </div>
+        
+        <!-- Campos técnicos ocultos -->
+        <textarea class="form-control d-none" name="drag-items" rows="3">{{contentData.items}}</textarea>
+        <textarea class="form-control d-none" name="drag-zones" rows="3">{{contentData.zones}}</textarea>
+        <textarea class="form-control d-none" name="drag-mapping" rows="3">{{contentData.mapping}}</textarea>
+    </div>
+
+    <div id="sec-shortanswer" class="interaction-type-section" style="display: none;">
+        <label><strong>{{#str}} questiontext, mod_vidinteractivo {{/str}}</strong></label>
+        <input type="text" class="form-control mb-3" name="short-prompt" value="{{contentData.prompt}}">
+        <label><strong>Respuestas correctas aceptadas</strong></label>
+        <div id="short-answers-container" class="mb-2"></div>
+        <button type="button" class="btn btn-sm btn-outline-primary mb-3" id="btn-add-short-answer"><i class="fa fa-plus"></i> Añadir respuesta correcta</button>
+        
+        <div class="form-check mt-3">
+            <input type="checkbox" class="form-check-input" name="short-casesensitive" value="1" {{#contentData.casesensitive}}checked{{/contentData.casesensitive}}>
+            <label class="form-check-label">{{#str}} casesensitive, mod_vidinteractivo {{/str}}</label>
+        </div>
+        
+        <!-- Campo técnico oculto -->
+        <textarea class="form-control d-none" name="short-answers" rows="3">{{contentData.answers}}</textarea>
+    </div>
+
+    <hr>
+    
+    <h5 class="mb-3">Opciones Generales</h5>
+    <div class="row mb-3">
+        <div class="col-md-4">
+            <label><strong>Puntaje máximo</strong></label>
+            <input type="number" step="0.1" class="form-control" name="maxscore" value="{{maxscore}}">
+        </div>
+        <div class="col-md-4">
+            <label><strong>Intentos permitidos</strong></label>
+            <input type="number" class="form-control" name="attemptsallowed" value="{{attemptsallowed}}">
+            <small class="text-muted">0 = Ilimitados</small>
+        </div>
+        <div class="col-md-4">
+            <label><strong>Penalización por fallo</strong></label>
+            <input type="number" step="0.1" class="form-control" name="penalty" value="{{penalty}}">
+        </div>
+    </div>
+
+    <div class="d-flex gap-3 mt-3">
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="required" id="interaction-required" {{#required}}checked{{/required}}>
+            <label class="form-check-label" for="interaction-required">Requerir respuesta para continuar</label>
+        </div>
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="pause" id="interaction-pause" {{#pause}}checked{{/pause}}>
+            <label class="form-check-label" for="interaction-pause">Pausar el video automáticamente</label>
+        </div>
+    </div>
+
+    <div class="modal-footer px-0 pb-0 mt-4">
+        <button type="button" class="btn btn-secondary" data-action="cancel">{{#str}} cancel, mod_vidinteractivo {{/str}}</button>
+        <button type="button" class="btn btn-primary" data-action="save-interaction">{{#str}} save, mod_vidinteractivo {{/str}}</button>
+    </div>
+</div>
+
+<template id="tpl-mcq-question">
+    <div class="mcq-question-block border p-3 mb-3 bg-light position-relative" style="border-radius: 8px;">
+        <button type="button" class="btn btn-sm btn-danger position-absolute btn-remove-question" style="top: 10px; right: 10px;" title="Eliminar pregunta"><i class="fa fa-trash"></i></button>
+        <label><strong>{{#str}} questiontext, mod_vidinteractivo {{/str}}</strong></label>
+        <input type="text" class="form-control mb-3 mcq-prompt">
+        <label><strong>{{#str}} options, mod_vidinteractivo {{/str}}</strong></label>
+        <div class="mcq-options-container"></div>
+        <button type="button" class="btn btn-sm btn-secondary btn-add-mcq-option mt-1"><i class="fa fa-plus"></i> Añadir opción</button>
+        <div class="form-check mt-3">
+            <input class="form-check-input mcq-multiple" type="checkbox">
+            <label class="form-check-label">{{#str}} allowmultiple, mod_vidinteractivo {{/str}}</label>
+        </div>
+    </div>
+</template>
+
+<template id="tpl-mcq-option">
+    <div class="d-flex align-items-center mb-2 mcq-option-row">
+        <input type="radio" class="me-2 mcq-option-correct" title="Marcar como correcta">
+        <input type="text" class="form-control mcq-option-text" placeholder="Escribe la opción aquí">
+        <button type="button" class="btn btn-sm btn-outline-danger ms-2 btn-remove-option" tabindex="-1"><i class="fa fa-times"></i></button>
+    </div>
+</template>
+
+<template id="tpl-tf-question">
+    <div class="tf-question-block border p-3 mb-3 bg-light position-relative" style="border-radius: 8px;">
+        <button type="button" class="btn btn-sm btn-danger position-absolute btn-remove-question" style="top: 10px; right: 10px;" title="Eliminar pregunta"><i class="fa fa-trash"></i></button>
+        <label><strong>{{#str}} questiontext, mod_vidinteractivo {{/str}}</strong></label>
+        <input type="text" class="form-control mb-3 tf-prompt">
+        <label><strong>{{#str}} correctanswer, mod_vidinteractivo {{/str}}</strong></label>
+        <select class="form-select custom-select tf-correct">
+            <option value="true">{{#str}} true, mod_vidinteractivo {{/str}}</option>
+            <option value="false">{{#str}} false, mod_vidinteractivo {{/str}}</option>
+        </select>
+    </div>
+</template>
+
+<template id="tpl-image-area-item">
+    <div class="d-flex align-items-center mb-2 p-2 border rounded bg-light image-area-item">
+        <div class="me-3 fw-bold area-label" style="min-width: 60px;">Área 1</div>
+        <div class="form-check me-3">
+            <input class="form-check-input area-correct" type="checkbox">
+            <label class="form-check-label">Correcta</label>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-danger ms-auto btn-remove-area"><i class="fa fa-trash"></i> Eliminar</button>
+    </div>
+</template>
+
+<template id="tpl-drag-zone">
+    <div class="d-flex mb-2 align-items-center">
+        <input type="text" class="form-control me-2 drag-zone-input" placeholder="Nombre de la zona" required>
+        <button type="button" class="btn btn-outline-danger btn-remove-zone"><i class="fa fa-trash"></i></button>
+    </div>
+</template>
+
+<template id="tpl-drag-item">
+    <div class="mb-3 p-2 border rounded bg-light">
+        <div class="d-flex mb-2">
+            <input type="text" class="form-control me-2 drag-item-input" placeholder="Texto del elemento" required>
+            <button type="button" class="btn btn-outline-danger btn-remove-item"><i class="fa fa-trash"></i></button>
+        </div>
+        <div class="d-flex align-items-center">
+            <label class="me-2 small">Pertenece a:</label>
+            <select class="form-select form-select-sm drag-item-mapping">
+                <option value="">Ninguna (Distractor)</option>
+            </select>
+        </div>
+    </div>
+</template>
+
+<template id="tpl-short-answer">
+    <div class="d-flex mb-2 align-items-center">
+        <input type="text" class="form-control me-2 short-answer-input" placeholder="Respuesta" required>
+        <button type="button" class="btn btn-outline-danger btn-remove-answer"><i class="fa fa-trash"></i></button>
+    </div>
+</template>

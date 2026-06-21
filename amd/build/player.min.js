@@ -1,0 +1,693 @@
+// Learner player for mod_vidinteractivo.
+
+define(['core/ajax', 'core/notification', 'mod_vidinteractivo/videoadapter'],
+function(Ajax, Notification, VideoAdapter) {
+
+    'use strict';
+
+    var normalizeType = function(type) {
+        var aliases = {
+            question: 'multiplechoice',
+            flashcard: 'capture',
+            true_false: 'truefalse',
+            image_selection: 'imageselection',
+            drag_drop: 'dragdrop',
+            short_answer: 'shortanswer'
+        };
+        return aliases[type] || type;
+    };
+
+    var escapeHtml = function(value) {
+        return String(value || '').replace(/[&<>"']/g, function(ch) {
+            return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[ch];
+        });
+    };
+
+    var parseContent = function(interaction) {
+        try {
+            return JSON.parse(interaction.content || '{}');
+        } catch (e) {
+            return {html: interaction.content || '', capture: interaction.content || ''};
+        }
+    };
+
+    var CONFETTI_COLORS = ['#2ecc71', '#f1c40f', '#3498db', '#e74c3c', '#9b59b6', '#f39c12', '#1abc9c'];
+
+    var Player = function(videoSelector, cmid) {
+        this.video = new VideoAdapter(videoSelector);
+        this.cmid = cmid;
+        this.interactions = [];
+        this.triggeredInteractions = {};
+        this.attemptCounts = {};
+        this.completedInteractions = {};
+        this.overlay = document.querySelector('.vidinteractivo-overlay-container');
+        this.activeSince = 0;
+
+        if (this.video) {
+            this.loadInteractions();
+            this.bindEvents();
+        }
+    };
+
+    Player.prototype.loadInteractions = function() {
+        var self = this;
+        return Ajax.call([{
+            methodname: 'mod_vidinteractivo_get_interactions',
+            args: {cmid: this.cmid}
+        }])[0].done(function(response) {
+            self.interactions = response.filter(function(item) {
+                item.type = normalizeType(item.type);
+                // Seed local state from DB so stale attempts don't blindside the student.
+                if (item.usedattempts) {
+                    self.attemptCounts[item.id] = item.usedattempts;
+                }
+                if (item.hascorrect) {
+                    self.completedInteractions[item.id] = true;
+                }
+                return item.visible;
+            });
+            return;
+        }).fail(Notification.exception);
+    };
+
+    Player.prototype.bindEvents = function() {
+        var self = this;
+        this.video.addEventListener('timeupdate', function() {
+            self.checkTime();
+        });
+        this.video.addEventListener('seeking', function() {
+            if (self.overlay && self.overlay.style.display !== 'none') {
+                self.video.pause();
+            }
+        });
+        this.video.addEventListener('ended', function() {
+            self.showSummary();
+        });
+    };
+
+    Player.prototype.checkTime = function() {
+        var self = this;
+        var currentTime = Math.floor(this.video.currentTime);
+        this.interactions.forEach(function(interaction) {
+            if (currentTime === parseInt(interaction.timestamp, 10) && !self.triggeredInteractions[interaction.id]) {
+                self.triggeredInteractions[interaction.id] = true;
+                // Already answered correctly (this session or a previous one) — skip silently.
+                if (self.completedInteractions[interaction.id]) {
+                    return;
+                }
+                // Informational types must always pause even if the author left
+                // the pause flag off — otherwise the next interaction fires before
+                // the user can read the content.
+                var alwaysPause = interaction.type === 'html' || interaction.type === 'capture';
+                if (interaction.pause || alwaysPause) {
+                    self.video.pause();
+                }
+                self.showInteraction(interaction);
+            }
+        });
+    };
+
+    Player.prototype.overlayParts = function() {
+        return {
+            title:    this.overlay.querySelector('[id^="overlay-title-"]'),
+            badge:    this.overlay.querySelector('[id^="overlay-badge-"]'),
+            body:     this.overlay.querySelector('[id^="overlay-body-"]'),
+            submit:   this.overlay.querySelector('[id^="overlay-btn-submit-"]'),
+            cont:     this.overlay.querySelector('[id^="overlay-btn-continue-"]'),
+            feedback: this.overlay.querySelector('[id^="overlay-feedback-"]')
+        };
+    };
+
+    Player.prototype.resetOverlay = function(parts) {
+        // Remove animation state and leftover particles
+        var card = this.overlay.querySelector('.vidinteractivo-overlay-card');
+        if (card) {
+            card.classList.remove('vidinteractivo--correct', 'vidinteractivo--incorrect');
+            card.querySelectorAll('.vidinteractivo-particle').forEach(function(p) { p.remove(); });
+        }
+
+        parts.body.innerHTML = '';
+        parts.feedback.innerHTML = '';
+        parts.feedback.className = 'feedback-msg';
+        parts.submit.style.display = 'none';
+        parts.submit.disabled = false;
+        parts.cont.style.display = 'none';
+
+        var newSubmit = parts.submit.cloneNode(true);
+        parts.submit.parentNode.replaceChild(newSubmit, parts.submit);
+        parts.submit = newSubmit;
+
+        var newContinue = parts.cont.cloneNode(true);
+        parts.cont.parentNode.replaceChild(newContinue, parts.cont);
+        parts.cont = newContinue;
+        return parts;
+    };
+
+    // Injects/updates the attempt counter badge at the top of parts.body.
+    Player.prototype.showAttemptCounter = function(interaction, parts) {
+        var used    = this.attemptCounts[interaction.id] || 0;
+        var allowed = interaction.attemptsallowed || 0;
+        if (allowed === 0 && used === 0) {
+            return;
+        }
+
+        var text = allowed > 0
+            ? 'Intento ' + (used + 1) + ' de ' + allowed
+            : 'Intento ' + (used + 1);
+
+        var existing = parts.body.querySelector('.vidinteractivo-attempt-counter');
+        if (existing) {
+            existing.querySelector('span').textContent = text;
+        } else {
+            parts.body.insertAdjacentHTML('afterbegin',
+                '<div class="vidinteractivo-attempt-counter">' +
+                '<i class="fa fa-repeat" aria-hidden="true"></i>' +
+                '<span>' + text + '</span>' +
+                '</div>');
+        }
+    };
+
+    // Spawns floating confetti particles on the overlay card.
+    Player.prototype.spawnConfetti = function() {
+        var card = this.overlay.querySelector('.vidinteractivo-overlay-card');
+        if (!card) { return; }
+        card.classList.add('vidinteractivo--correct');
+        for (var i = 0; i < 8; i++) {
+            var p = document.createElement('div');
+            p.className = 'vidinteractivo-particle';
+            p.style.left = (8 + Math.random() * 84) + '%';
+            p.style.backgroundColor = CONFETTI_COLORS[i % CONFETTI_COLORS.length];
+            p.style.animationDelay = (Math.random() * 0.25) + 's';
+            card.appendChild(p);
+        }
+        setTimeout(function() {
+            card.querySelectorAll('.vidinteractivo-particle').forEach(function(p) { p.remove(); });
+        }, 1400);
+    };
+
+    // Briefly shakes the overlay card to signal a wrong answer.
+    Player.prototype.shakeCard = function() {
+        var card = this.overlay.querySelector('.vidinteractivo-overlay-card');
+        if (!card) { return; }
+        card.classList.add('vidinteractivo--incorrect');
+        setTimeout(function() { card.classList.remove('vidinteractivo--incorrect'); }, 500);
+    };
+
+    Player.prototype.showInteraction = function(interaction) {
+        if (!this.overlay) {
+            return;
+        }
+        var self = this;
+        var parts = this.resetOverlay(this.overlayParts());
+        var content = parseContent(interaction);
+        this.activeSince = Date.now();
+
+        parts.title.textContent = interaction.title || content.prompt || 'Interaccion';
+        parts.badge.textContent = interaction.type;
+        parts.badge.className = 'badge bg-primary text-white';
+
+        // If the student already used all their allowed attempts (possibly from a
+        // previous session), show retry options immediately without rendering the form.
+        // This prevents the server from blocking a correct answer with "attempts exhausted".
+        var gradableTypes = ['multiplechoice', 'truefalse', 'imageselection', 'dragdrop', 'shortanswer'];
+        var usedAttempts = this.attemptCounts[interaction.id] || 0;
+        var attemptsAllowed = interaction.attemptsallowed || 0;
+        if (gradableTypes.indexOf(interaction.type) !== -1 && attemptsAllowed > 0 && usedAttempts >= attemptsAllowed) {
+            parts.feedback.innerHTML =
+                '<span class="text-warning small"><i class="fa fa-lock"></i> ' +
+                'Ya agotaste los intentos permitidos para esta pregunta.</span>';
+            this.shakeCard();
+            this.showRetryOptions(interaction, parts);
+            this.overlay.style.display = 'flex';
+            return;
+        }
+
+        if (interaction.type === 'html') {
+            this.renderHtml(parts, content);
+            parts.cont.style.display = 'inline-block';
+        } else if (interaction.type === 'capture') {
+            this.renderCapture(parts, content);
+            parts.cont.style.display = 'inline-block';
+        } else if (interaction.type === 'multiplechoice') {
+            this.renderMultipleChoice(parts, content);
+            this.showAttemptCounter(interaction, parts);
+        } else if (interaction.type === 'truefalse') {
+            this.renderTrueFalse(parts, content);
+            this.showAttemptCounter(interaction, parts);
+        } else if (interaction.type === 'imageselection') {
+            this.renderImageSelection(parts, content);
+            this.showAttemptCounter(interaction, parts);
+            parts.submit.style.display = 'inline-block';
+        } else if (interaction.type === 'dragdrop') {
+            this.renderDragDrop(parts, content);
+            this.showAttemptCounter(interaction, parts);
+            parts.submit.style.display = 'inline-block';
+        } else if (interaction.type === 'shortanswer') {
+            this.renderShortAnswer(parts, content);
+            this.showAttemptCounter(interaction, parts);
+            parts.submit.style.display = 'inline-block';
+        }
+
+        parts.submit.addEventListener('click', function() {
+            var response = self.collectResponse(parts.body, interaction.type, content);
+            if (response === null) {
+                parts.feedback.innerHTML = '<span class="text-danger">Completa todas las partes de la actividad antes de enviar.</span>';
+                return;
+            }
+            self.submitAttempt(interaction, response, parts);
+        });
+
+        parts.cont.addEventListener('click', function() {
+            self.overlay.style.display = 'none';
+            if (self.video) {
+                self.video.play();
+            }
+        });
+
+        this.overlay.style.display = 'flex';
+    };
+
+    Player.prototype.renderHtml = function(parts, content) {
+        parts.body.innerHTML = '<div class="html-interaction-content">' + (content.html || '') + '</div>';
+    };
+
+    Player.prototype.renderCapture = function(parts, content) {
+        parts.body.innerHTML = '<div class="capture-interaction-content"><p class="lead mb-0">' +
+            escapeHtml(content.capture || content.message || 'Video en pausa.') + '</p></div>';
+    };
+
+    Player.prototype.renderMultipleChoice = function(parts, content) {
+        var questions = content.questions || [];
+        if (questions.length === 0 && (content.prompt || content.options)) {
+             questions = [content];
+        }
+        var html = '';
+        questions.forEach(function(q, qIndex) {
+            var inputType = q.multiple ? 'checkbox' : 'radio';
+            var options = q.options || [];
+            var style = qIndex === 0 ? '' : 'display: none;';
+            html += '<div class="mcq-question-container mb-4 pb-3 carousel-item-block" data-index="' + qIndex + '" style="' + style + '">';
+            html += '<p class="question-prompt mb-3 lead font-weight-bold">' + escapeHtml(q.prompt || q.question || '') + '</p>';
+            html += '<div class="vidinteractivo-options-list">';
+            options.forEach(function(opt, optIndex) {
+                html += '<label class="vidinteractivo-option-item">' +
+                    '<input type="' + inputType + '" name="vidinteractivo-opt-' + qIndex + '" value="' + optIndex + '"> ' +
+                    '<span>' + escapeHtml(opt) + '</span></label>';
+            });
+            html += '</div></div>';
+        });
+        parts.body.innerHTML = html;
+        this.setupCarousel(parts, questions.length);
+    };
+
+    Player.prototype.renderTrueFalse = function(parts, content) {
+        var questions = content.questions || [];
+        if (questions.length === 0 && content.prompt) {
+             questions = [content];
+        }
+        var html = '';
+        questions.forEach(function(q, qIndex) {
+            var style = qIndex === 0 ? '' : 'display: none;';
+            html += '<div class="tf-question-container mb-4 pb-3 carousel-item-block" data-index="' + qIndex + '" style="' + style + '">';
+            html += '<p class="question-prompt mb-3 lead font-weight-bold">' + escapeHtml(q.prompt || '') + '</p>';
+            html += '<div class="vidinteractivo-options-list">' +
+                '<label class="vidinteractivo-option-item"><input type="radio" name="vidinteractivo-tf-' + qIndex + '" value="true"> Verdadero</label>' +
+                '<label class="vidinteractivo-option-item"><input type="radio" name="vidinteractivo-tf-' + qIndex + '" value="false"> Falso</label>' +
+                '</div></div>';
+        });
+        parts.body.innerHTML = html;
+        this.setupCarousel(parts, questions.length);
+    };
+
+    Player.prototype.setupCarousel = function(parts, total) {
+        if (total <= 1) {
+            parts.submit.style.display = 'inline-block';
+            return;
+        }
+
+        var currentIndex = 0;
+
+        var controlsHtml = '<div class="carousel-controls mt-3 pt-3 border-top d-flex justify-content-between align-items-center">' +
+            '<button type="button" class="btn btn-outline-secondary btn-carousel-prev" disabled><i class="fa fa-chevron-left"></i> Anterior</button>' +
+            '<span class="carousel-indicator text-muted">1 de ' + total + '</span>' +
+            '<button type="button" class="btn btn-primary btn-carousel-next">Siguiente <i class="fa fa-chevron-right"></i></button>' +
+            '</div>';
+
+        parts.body.insertAdjacentHTML('beforeend', controlsHtml);
+
+        var btnPrev  = parts.body.querySelector('.btn-carousel-prev');
+        var btnNext  = parts.body.querySelector('.btn-carousel-next');
+        var indicator = parts.body.querySelector('.carousel-indicator');
+
+        parts.submit.style.display = 'none';
+
+        var showSlide = function(index) {
+            parts.body.querySelectorAll('.carousel-item-block').forEach(function(item, i) {
+                item.style.display = i === index ? 'block' : 'none';
+            });
+            btnPrev.disabled = index === 0;
+            if (index === total - 1) {
+                btnNext.style.display = 'none';
+                parts.submit.style.display = 'inline-block';
+            } else {
+                btnNext.style.display = 'inline-block';
+                parts.submit.style.display = 'none';
+            }
+            indicator.textContent = (index + 1) + ' de ' + total;
+        };
+
+        btnPrev.addEventListener('click', function() {
+            if (currentIndex > 0) { currentIndex--; showSlide(currentIndex); }
+        });
+        btnNext.addEventListener('click', function() {
+            if (currentIndex < total - 1) { currentIndex++; showSlide(currentIndex); }
+        });
+    };
+
+    Player.prototype.renderImageSelection = function(parts, content) {
+        parts.body.innerHTML = '<p class="question-prompt mb-3 lead font-weight-bold">' + escapeHtml(content.prompt || '') + '</p>' +
+            '<div class="vidinteractivo-image-question position-relative" style="display: inline-block; user-select: none;">' +
+            '<img src="' + escapeHtml(content.imageurl || '') + '" alt="" class="img-fluid" data-selected-x="" data-selected-y="" draggable="false">' +
+            '<div id="student-image-areas-container" style="position: absolute; top:0; left:0; width:100%; height:100%;"></div>' +
+            '</div>' +
+            '<div class="small mt-2 text-muted" id="image-selection-feedback">Haz clic en la zona correcta.</div>';
+
+        var container = parts.body.querySelector('#student-image-areas-container');
+        var img = parts.body.querySelector('img');
+        var areas = content.areas || [];
+
+        areas.forEach(function(area) {
+            var box = document.createElement('div');
+            box.style.position = 'absolute';
+            box.style.left = area.x + '%';
+            box.style.top = area.y + '%';
+            box.style.width = area.width + '%';
+            box.style.height = area.height + '%';
+            box.style.border = '2px solid rgba(52, 152, 219, 0.5)';
+            box.style.backgroundColor = 'rgba(52, 152, 219, 0.1)';
+            box.style.cursor = 'pointer';
+            box.style.transition = 'all 0.2s';
+
+            box.addEventListener('mouseover', function() {
+                if (box.dataset.selected !== 'true') {
+                    box.style.backgroundColor = 'rgba(52, 152, 219, 0.3)';
+                    box.style.border = '2px solid rgba(52, 152, 219, 0.8)';
+                }
+            });
+            box.addEventListener('mouseout', function() {
+                if (box.dataset.selected !== 'true') {
+                    box.style.backgroundColor = 'rgba(52, 152, 219, 0.1)';
+                    box.style.border = '2px solid rgba(52, 152, 219, 0.5)';
+                }
+            });
+            box.addEventListener('click', function() {
+                container.querySelectorAll('div').forEach(function(b) {
+                    b.dataset.selected = 'false';
+                    b.style.backgroundColor = 'rgba(52, 152, 219, 0.1)';
+                    b.style.border = '2px solid rgba(52, 152, 219, 0.5)';
+                });
+                box.dataset.selected = 'true';
+                box.style.backgroundColor = 'rgba(46, 204, 113, 0.4)';
+                box.style.border = '3px solid #2ecc71';
+                var centerX = area.x + (area.width / 2);
+                var centerY = area.y + (area.height / 2);
+                img.dataset.selectedX = centerX.toFixed(2);
+                img.dataset.selectedY = centerY.toFixed(2);
+                parts.body.querySelector('#image-selection-feedback').textContent = 'Zona seleccionada correctamente.';
+            });
+            container.appendChild(box);
+        });
+
+        if (areas.length === 0) {
+            img.addEventListener('click', function(e) {
+                var rect = img.getBoundingClientRect();
+                var x = ((e.clientX - rect.left) / rect.width) * 100;
+                var y = ((e.clientY - rect.top) / rect.height) * 100;
+                img.dataset.selectedX = x.toFixed(2);
+                img.dataset.selectedY = y.toFixed(2);
+                parts.body.querySelector('#image-selection-feedback').textContent = 'Punto seleccionado.';
+            });
+        }
+    };
+
+    Player.prototype.renderDragDrop = function(parts, content) {
+        var items = content.items || [];
+        var zones = content.zones || [];
+        parts.body.innerHTML = '<p class="question-prompt mb-3 lead font-weight-bold">' + escapeHtml(content.prompt || '') + '</p>' +
+            '<div class="vidinteractivo-drag-items">' + items.map(function(item) {
+                return '<div class="vidinteractivo-draggable" draggable="true" data-item="' + escapeHtml(item) + '">' + escapeHtml(item) + '</div>';
+            }).join('') + '</div>' +
+            '<div class="vidinteractivo-dropzones">' + zones.map(function(zone) {
+                return '<div class="vidinteractivo-dropzone" data-zone="' + escapeHtml(zone) + '"><strong>' + escapeHtml(zone) + '</strong><span></span></div>';
+            }).join('') + '</div>';
+
+        parts.body.querySelectorAll('.vidinteractivo-draggable').forEach(function(item) {
+            item.addEventListener('dragstart', function(e) {
+                e.dataTransfer.setData('text/plain', item.dataset.item);
+            });
+        });
+        parts.body.querySelectorAll('.vidinteractivo-dropzone').forEach(function(zone) {
+            zone.addEventListener('dragover', function(e) { e.preventDefault(); });
+            zone.addEventListener('drop', function(e) {
+                e.preventDefault();
+                var droppedItem = e.dataTransfer.getData('text/plain');
+                // If this item is already in another zone, clear it from there first.
+                parts.body.querySelectorAll('.vidinteractivo-dropzone').forEach(function(other) {
+                    if (other !== zone && other.dataset.item === droppedItem) {
+                        delete other.dataset.item;
+                        other.querySelector('span').textContent = '';
+                    }
+                });
+                zone.dataset.item = droppedItem;
+                zone.querySelector('span').textContent = droppedItem;
+            });
+        });
+    };
+
+    Player.prototype.renderShortAnswer = function(parts, content) {
+        parts.body.innerHTML = '<p class="question-prompt mb-3 lead font-weight-bold">' + escapeHtml(content.prompt || '') + '</p>' +
+            '<input type="text" class="form-control" name="vidinteractivo-shortanswer">';
+    };
+
+    Player.prototype.collectResponse = function(body, type, content) {
+        if (type === 'multiplechoice') {
+            var questions = content.questions || [content];
+            var responses = [];
+            var allAnswered = true;
+            questions.forEach(function(q, qIndex) {
+                var selected = Array.prototype.slice.call(body.querySelectorAll('input[name="vidinteractivo-opt-' + qIndex + '"]:checked')).map(function(input) {
+                    return parseInt(input.value, 10);
+                });
+                if (!selected.length) { allAnswered = false; }
+                responses.push(selected);
+            });
+            if (!allAnswered) { return null; }
+            return JSON.stringify(responses);
+        }
+        if (type === 'truefalse') {
+            var questions = content.questions || [content];
+            var responses = [];
+            var allAnswered = true;
+            questions.forEach(function(q, qIndex) {
+                var tf = body.querySelector('input[name="vidinteractivo-tf-' + qIndex + '"]:checked');
+                if (!tf) { allAnswered = false; } else { responses.push(tf.value); }
+            });
+            if (!allAnswered) { return null; }
+            return JSON.stringify(responses);
+        }
+        if (type === 'imageselection') {
+            var img = body.querySelector('img');
+            if (!img || img.dataset.selectedX === '') { return null; }
+            return JSON.stringify({x: parseFloat(img.dataset.selectedX), y: parseFloat(img.dataset.selectedY)});
+        }
+        if (type === 'dragdrop') {
+            var mapping = {};
+            var complete = true;
+            body.querySelectorAll('.vidinteractivo-dropzone').forEach(function(zone) {
+                if (!zone.dataset.item) {
+                    complete = false;
+                } else {
+                    mapping[zone.dataset.item] = zone.dataset.zone;
+                }
+            });
+            return complete ? JSON.stringify(mapping) : null;
+        }
+        if (type === 'shortanswer') {
+            var answer = body.querySelector('[name="vidinteractivo-shortanswer"]').value.trim();
+            return answer === '' ? null : answer;
+        }
+        return '';
+    };
+
+    Player.prototype.submitAttempt = function(interaction, response, parts) {
+        var self = this;
+        var timetaken = Math.max(0, Math.round((Date.now() - this.activeSince) / 1000));
+        parts.submit.disabled = true;
+
+        return Ajax.call([{
+            methodname: 'mod_vidinteractivo_save_attempt',
+            args: {
+                cmid: this.cmid,
+                interactionid: interaction.id,
+                response: response,
+                timetaken: timetaken
+            }
+        }])[0].done(function(result) {
+            var feedbackContent = result.iscorrect
+                ? '<span class="text-success"><i class="fa fa-check-circle"></i> ' + escapeHtml(result.feedback || 'Respuesta correcta') + '</span>'
+                : '<span class="text-danger"><i class="fa fa-times-circle"></i> '   + escapeHtml(result.feedback || 'Respuesta incorrecta') + '</span>';
+
+            if (result.iscorrect) {
+                self.completedInteractions[interaction.id] = true;
+                self.spawnConfetti();
+                parts.submit.style.display = 'none';
+                parts.cont.style.display = 'inline-block';
+                parts.feedback.innerHTML = feedbackContent;
+                parts.body.querySelectorAll('input, button, select, textarea').forEach(function(el) { el.disabled = true; });
+                parts.body.querySelectorAll('.vidinteractivo-draggable').forEach(function(el) { el.setAttribute('draggable', 'false'); });
+
+            } else if (result.attemptsremaining !== 0) {
+                // Wrong but still has attempts (> 0 or -1 = unlimited)
+                self.shakeCard();
+                self.attemptCounts[interaction.id] = (self.attemptCounts[interaction.id] || 0) + 1;
+                if ((interaction.attemptsallowed || 0) > 0) {
+                    feedbackContent += '<br><small class="text-muted">Intentos restantes: ' + result.attemptsremaining + '</small>';
+                }
+                parts.feedback.innerHTML = feedbackContent;
+                parts.submit.disabled = false;
+                self.showAttemptCounter(interaction, parts);
+
+            } else {
+                // Wrong and exhausted — lock form, offer navigation
+                self.shakeCard();
+                self.attemptCounts[interaction.id] = (self.attemptCounts[interaction.id] || 0) + 1;
+                parts.submit.style.display = 'none';
+                parts.feedback.innerHTML = feedbackContent;
+                parts.body.querySelectorAll('input, button, select, textarea').forEach(function(el) { el.disabled = true; });
+                parts.body.querySelectorAll('.vidinteractivo-draggable').forEach(function(el) { el.setAttribute('draggable', 'false'); });
+                self.showRetryOptions(interaction, parts);
+            }
+            return;
+        }).fail(function(ex) {
+            parts.submit.disabled = false;
+            Notification.exception(ex);
+        });
+    };
+
+    Player.prototype.showRetryOptions = function(interaction, parts) {
+        var self = this;
+
+        var sortedInteractions = this.interactions.slice().sort(function(a, b) {
+            return parseInt(a.timestamp, 10) - parseInt(b.timestamp, 10);
+        });
+
+        var previousInteraction = null;
+        for (var i = 0; i < sortedInteractions.length; i++) {
+            if (sortedInteractions[i].id === interaction.id) {
+                if (i > 0) { previousInteraction = sortedInteractions[i - 1]; }
+                break;
+            }
+        }
+
+        var html = '<div class="vidinteractivo-retry-options">';
+        html += '<p><i class="fa fa-exclamation-triangle"></i> Intentos agotados para esta pregunta.</p>';
+
+        if (previousInteraction) {
+            var prevMin = Math.floor(parseInt(previousInteraction.timestamp, 10) / 60);
+            var prevSec = parseInt(previousInteraction.timestamp, 10) % 60;
+            var prevTimeStr = prevMin + ':' + (prevSec < 10 ? '0' : '') + prevSec;
+            html += '<button class="btn btn-warning btn-go-prev">' +
+                '<i class="fa fa-step-backward"></i> Interacción anterior (' + escapeHtml(prevTimeStr) + ')</button>';
+        }
+
+        html += '<button class="btn btn-secondary btn-go-start">' +
+            '<i class="fa fa-fast-backward"></i> Inicio del video</button>';
+        html += '</div>';
+
+        parts.body.insertAdjacentHTML('beforeend', html);
+
+        // Shared helper: reset DB attempts, local counts, triggered flags, then navigate.
+        var resetAndNavigate = function(idsToReset, navigateFn) {
+            Ajax.call([{
+                methodname: 'mod_vidinteractivo_reset_attempts',
+                args: {cmid: self.cmid, interactionids: idsToReset}
+            }])[0].done(function() {
+                idsToReset.forEach(function(id) {
+                    delete self.attemptCounts[id];
+                });
+                navigateFn();
+            }).fail(Notification.exception);
+        };
+
+        if (previousInteraction) {
+            var prevBtn = parts.body.querySelector('.btn-go-prev');
+            if (prevBtn) {
+                prevBtn.addEventListener('click', function() {
+                    // Reset only the current (failed) interaction — student skips the
+                    // previous interaction and watches the video segment up to this one.
+                    resetAndNavigate([interaction.id], function() {
+                        delete self.triggeredInteractions[interaction.id];
+                        self.overlay.style.display = 'none';
+                        // Jump to 1 s after the previous interaction so the student
+                        // watches the segment between interactions without redoing it.
+                        var jumpTs = parseInt(previousInteraction.timestamp, 10) + 1;
+                        self.video.currentTime = jumpTs;
+                        self.video.play();
+                    });
+                });
+            }
+        }
+
+        var startBtn = parts.body.querySelector('.btn-go-start');
+        if (startBtn) {
+            startBtn.addEventListener('click', function() {
+                var allIds = self.interactions.map(function(intx) { return intx.id; });
+                resetAndNavigate(allIds, function() {
+                    self.triggeredInteractions = {};
+                    self.attemptCounts = {};
+                    self.completedInteractions = {};
+                    self.overlay.style.display = 'none';
+                    self.video.currentTime = 0;
+                    self.video.play();
+                });
+            });
+        }
+    };
+
+    Player.prototype.showSummary = function() {
+        if (!this.overlay) {
+            return;
+        }
+        var self = this;
+        Ajax.call([{
+            methodname: 'mod_vidinteractivo_get_summary',
+            args: {cmid: this.cmid}
+        }])[0].done(function(response) {
+            var parts = self.resetOverlay(self.overlayParts());
+            parts.title.textContent = 'Resultado del video interactivo';
+            parts.badge.textContent = 'Reporte';
+            parts.badge.className = 'badge bg-success text-white';
+
+            var percentageClass = response.percentage >= 50 ? 'text-success' : 'text-danger';
+            parts.body.innerHTML = '<div class="text-center py-4">' +
+                '<h2 class="display-4 ' + percentageClass + '"><strong>' + response.percentage + '%</strong></h2>' +
+                '<p class="lead mt-3">Aciertos: <strong>' + response.correct + '</strong> / Errores: <strong>' + response.incorrect + '</strong></p>' +
+                '<p>Puntos obtenidos: <strong>' + response.obtained + '</strong> de <strong>' + response.possible + '</strong></p>' +
+                '</div>';
+
+            parts.cont.style.display = 'inline-block';
+            parts.cont.textContent = 'Cerrar resumen';
+            parts.cont.addEventListener('click', function() {
+                self.overlay.style.display = 'none';
+            });
+
+            self.overlay.style.display = 'flex';
+        }).fail(Notification.exception);
+    };
+
+    return {
+        init: function(videoSelector, cmid) {
+            return new Player(videoSelector, cmid);
+        }
+    };
+});

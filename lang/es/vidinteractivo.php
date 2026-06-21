@@ -1,0 +1,88 @@
+<?php
+// This file is part of Moodle - http://moodle.org/
+
+defined('MOODLE_INTERNAL') || die();
+
+$string['pluginname'] = 'Video Interactivo';
+$string['pluginadministration'] = 'Administracion de Video Interactivo';
+$string['modulename'] = 'Video Interactivo';
+$string['modulenameplural'] = 'Videos Interactivos';
+$string['modulename_help'] = 'La actividad Video Interactivo permite insertar actividades en momentos especificos de un video, registrar respuestas y enviar calificaciones al libro de calificaciones.';
+
+$string['vidinteractivoname'] = 'Nombre de la actividad';
+$string['vidinteractivosettings'] = 'Configuracion General';
+$string['videosettings'] = 'Origen del Video';
+$string['videotype'] = 'Tipo de video';
+$string['videotype_url'] = 'URL externa (YouTube o archivo MP4)';
+$string['videourl'] = 'URL del video';
+$string['videourl_help'] = 'Introduce la direccion URL del video de YouTube o el enlace directo a un archivo MP4.';
+$string['gradesettings'] = 'Calificaciones del Video Interactivo';
+$string['passgrade'] = 'Porcentaje para aprobar (0-100)';
+$string['completionrequiresall'] = 'Requiere responder todas las interacciones para completar';
+
+$string['maximumchars'] = 'Maximo de {$a} caracteres';
+$string['save'] = 'Guardar';
+$string['cancel'] = 'Cancelar';
+$string['addinteraction'] = 'Agregar interaccion';
+$string['editinteraction'] = 'Editar interaccion';
+$string['deleteinteraction'] = 'Eliminar interaccion';
+$string['interactiontype'] = 'Tipo de interaccion';
+$string['interactioncontent'] = 'Contenido';
+$string['timestamp'] = 'Inicio (segundos)';
+$string['timeend'] = 'Fin opcional';
+$string['continue'] = 'Continuar';
+$string['submit'] = 'Enviar';
+$string['score'] = 'Puntuacion';
+$string['correct'] = 'Correcto';
+$string['incorrect'] = 'Incorrecto';
+$string['answered'] = 'Respondido';
+$string['title'] = 'Titulo';
+$string['questiontext'] = 'Pregunta';
+$string['options'] = 'Opciones';
+$string['options_help'] = 'Escribe una opcion por linea.';
+$string['correctoption'] = 'Opcion correcta';
+$string['correctanswer'] = 'Respuesta correcta';
+$string['correctanswers'] = 'Respuestas correctas';
+$string['allowmultiple'] = 'Permitir varias respuestas correctas';
+$string['htmlcontent'] = 'Contenido HTML / texto';
+$string['capturemessage'] = 'Mensaje de pausa';
+$string['imageurl'] = 'URL de la imagen';
+$string['rectangularareas'] = 'Areas rectangulares';
+$string['rectangularareas_help'] = 'Una zona por linea: x,y,ancho,alto,correcta. Usa porcentajes de 0 a 100.';
+$string['draggableitems'] = 'Elementos arrastrables';
+$string['dropzones'] = 'Zonas destino';
+$string['correctmapping'] = 'Mapa correcto';
+$string['validanswers'] = 'Respuestas validas';
+$string['casesensitive'] = 'Distinguir mayusculas y minusculas';
+$string['maxscore'] = 'Puntuacion maxima';
+$string['attemptsallowed'] = 'Intentos permitidos';
+$string['penalty'] = 'Penalizacion por intento extra';
+$string['required'] = 'Obligatoria';
+$string['pausevideo'] = 'Pausar video';
+$string['true'] = 'Verdadero';
+$string['false'] = 'Falso';
+$string['report'] = 'Reporte';
+$string['reports'] = 'Reportes';
+$string['student'] = 'Estudiante';
+$string['finalgrade'] = 'Calificacion final';
+$string['percentage'] = 'Porcentaje';
+$string['correctcount'] = 'Aciertos';
+$string['incorrectcount'] = 'Errores';
+$string['progress'] = 'Progreso';
+$string['passed'] = 'Aprobado';
+$string['failed'] = 'Reprobado';
+$string['notgraded'] = 'Sin calificacion';
+$string['noguestattempt'] = 'Los usuarios invitados no pueden responder interacciones.';
+$string['attempts_exhausted'] = 'Ya no quedan intentos disponibles para esta interaccion.';
+$string['interactionnotavailable'] = 'La interaccion no esta disponible.';
+$string['unknowninteractiontype'] = 'Tipo de interaccion desconocido: {$a}';
+$string['nointeractions'] = 'Aun no se han configurado interacciones.';
+$string['interactivevideofeedback'] = 'Resultado del video interactivo';
+
+$string['type_multiplechoice'] = 'Opcion multiple';
+$string['type_truefalse'] = 'Verdadero / Falso';
+$string['type_imageselection'] = 'Seleccion sobre imagen';
+$string['type_dragdrop'] = 'Arrastrar y soltar';
+$string['type_shortanswer'] = 'Respuesta corta';
+$string['type_html'] = 'HTML / Texto';
+$string['type_capture'] = 'Pausa informativa';

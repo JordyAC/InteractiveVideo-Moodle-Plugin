@@ -1,0 +1,26 @@
+{{!
+    Template de overlay para mostrar las interacciones sobre el video (vista del estudiante).
+}}
+<div class="vidinteractivo-overlay-container" id="vidinteractivo-overlay-{{uniqid}}" style="display: none;">
+    <div class="vidinteractivo-overlay-backdrop"></div>
+    <div class="vidinteractivo-overlay-card">
+        <div class="vidinteractivo-card-header d-flex justify-content-between align-items-center">
+            <h5 class="vidinteractivo-card-title mb-0" id="overlay-title-{{uniqid}}">Interacción</h5>
+            <span class="badge badge-secondary" id="overlay-badge-{{uniqid}}"></span>
+        </div>
+        <div class="vidinteractivo-card-body mt-3" id="overlay-body-{{uniqid}}">
+            <!-- El contenido dinámico se inyecta mediante JS en player.js -->
+        </div>
+        <div class="vidinteractivo-card-footer mt-4 text-end d-flex justify-content-between align-items-center">
+            <div id="overlay-feedback-{{uniqid}}" class="feedback-msg"></div>
+            <div class="action-buttons">
+                <button type="button" class="btn btn-primary" id="overlay-btn-submit-{{uniqid}}" style="display: none;">
+                    {{#str}} submit, mod_vidinteractivo {{/str}}
+                </button>
+                <button type="button" class="btn btn-success" id="overlay-btn-continue-{{uniqid}}" style="display: none;">
+                    {{#str}} continue, mod_vidinteractivo {{/str}}
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
