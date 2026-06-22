@@ -34,6 +34,16 @@ final class dragdrop extends base_element {
             }
         }
 
+        // Check that no extra distractors were dragged.
+        if ($iscorrect) {
+            foreach ($submitted as $item => $submittedzone) {
+                if (!array_key_exists($item, $mapping) || $mapping[$item] !== $submittedzone) {
+                    $iscorrect = false;
+                    break;
+                }
+            }
+        }
+
         $score = $iscorrect ? $this->apply_penalty($maxscore, $attemptnumber, $penalty) : 0.0;
         $msg   = $iscorrect ? get_string('correct', 'mod_vidinteractivo') : get_string('incorrect', 'mod_vidinteractivo');
         return new grade_result($iscorrect, $score, $msg);

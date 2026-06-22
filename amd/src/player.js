@@ -522,19 +522,17 @@ function(Ajax, Notification, VideoAdapter) {
         }
         if (type === 'dragdrop') {
             var mapping = {};
-            var complete = true;
-            var poolItems = body.querySelectorAll('#vidinteractivo-item-pool .vidinteractivo-draggable');
-            if (poolItems && poolItems.length > 0) {
-                complete = false;
-            } else {
-                body.querySelectorAll('.vidinteractivo-dropzone').forEach(function(zone) {
-                    var zoneName = zone.dataset.zone;
-                    zone.querySelectorAll('.vidinteractivo-draggable').forEach(function(item) {
-                        mapping[item.dataset.item] = zoneName;
-                    });
+            var movedItems = false;
+            body.querySelectorAll('.vidinteractivo-dropzone').forEach(function(zone) {
+                var zoneName = zone.dataset.zone;
+                zone.querySelectorAll('.vidinteractivo-draggable').forEach(function(item) {
+                    mapping[item.dataset.item] = zoneName;
+                    movedItems = true;
                 });
-            }
-            return complete ? JSON.stringify(mapping) : null;
+            });
+            // Return mapping if at least one item was moved.
+            // If no items were moved, return null to indicate the question is incomplete.
+            return movedItems ? JSON.stringify(mapping) : null;
         }
         if (type === 'shortanswer') {
             var answer = body.querySelector('[name="vidinteractivo-shortanswer"]').value.trim();
