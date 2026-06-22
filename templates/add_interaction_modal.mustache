@@ -64,8 +64,15 @@
     <div id="sec-imageselection" class="interaction-type-section" style="display: none;">
         <label><strong>{{#str}} questiontext, mod_vidinteractivo {{/str}}</strong></label>
         <input type="text" class="form-control mb-3" name="image-prompt" value="{{contentData.prompt}}">
-        <label><strong>{{#str}} imageurl, mod_vidinteractivo {{/str}}</strong></label>
-        <input type="url" class="form-control mb-3" name="image-url" value="{{contentData.imageurl}}">
+        
+        <div class="card p-3 mb-3 bg-light">
+            <label><strong>Subir una Imagen / Captura</strong></label>
+            <input type="file" id="image-upload-file" class="form-control mb-2" accept="image/png, image/jpeg, image/gif, image/webp">
+            <div class="text-muted small mb-3"><i class="fa fa-info-circle"></i> La imagen se comprimirá automáticamente para ahorrar espacio.</div>
+            
+            <label><strong>O usa un enlace externo (URL)</strong></label>
+            <input type="url" class="form-control" name="image-url" value="{{contentData.imageurl}}" placeholder="https://...">
+        </div>
         <div id="image-selection-preview-container" style="display: none; margin-bottom: 15px;">
             <p class="small text-muted mb-2"><i class="fa fa-info-circle"></i> Haz clic y arrastra sobre la imagen para crear áreas interactivas.</p>
             <div id="image-selection-wrapper" style="position: relative; display: inline-block; max-width: 100%; user-select: none;">

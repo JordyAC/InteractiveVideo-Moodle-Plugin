@@ -411,6 +411,44 @@ function(Ajax, Notification, Templates, Modal, VideoAdapter) {
                 imageUrlInput.addEventListener('blur', updatePreview);
                 updatePreview();
 
+                var fileInput = root.querySelector('#image-upload-file');
+                if (fileInput) {
+                    fileInput.addEventListener('change', function(e) {
+                        var file = e.target.files[0];
+                        if (!file) return;
+                        if (!file.type.match('image.*')) {
+                            alert('Por favor selecciona un archivo de imagen.');
+                            return;
+                        }
+                        
+                        var reader = new FileReader();
+                        reader.onload = function(evt) {
+                            var imgObj = new Image();
+                            imgObj.onload = function() {
+                                var canvas = document.createElement('canvas');
+                                var ctx = canvas.getContext('2d');
+                                var maxWidth = 1024;
+                                var scale = 1;
+                                
+                                if (imgObj.width > maxWidth) {
+                                    scale = maxWidth / imgObj.width;
+                                }
+                                
+                                canvas.width = imgObj.width * scale;
+                                canvas.height = imgObj.height * scale;
+                                ctx.drawImage(imgObj, 0, 0, canvas.width, canvas.height);
+                                
+                                // Export as JPEG 80% quality
+                                var dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                                imageUrlInput.value = dataUrl;
+                                updatePreview();
+                            };
+                            imgObj.src = evt.target.result;
+                        };
+                        reader.readAsDataURL(file);
+                    });
+                }
+
                 imagePreview.addEventListener('mousedown', function(e) {
                     var rect = imagePreview.getBoundingClientRect();
                     isDrawing = true;
