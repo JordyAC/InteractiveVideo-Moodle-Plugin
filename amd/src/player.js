@@ -434,34 +434,54 @@ function(Ajax, Notification, VideoAdapter) {
         var items = content.items || [];
         var zones = content.zones || [];
         parts.body.innerHTML = '<p class="question-prompt mb-3 lead font-weight-bold">' + escapeHtml(content.prompt || '') + '</p>' +
-            '<div class="vidinteractivo-drag-items">' + items.map(function(item) {
+            '<div class="vidinteractivo-drag-items" id="vidinteractivo-item-pool">' + items.map(function(item) {
                 return '<div class="vidinteractivo-draggable" draggable="true" data-item="' + escapeHtml(item) + '">' + escapeHtml(item) + '</div>';
             }).join('') + '</div>' +
             '<div class="vidinteractivo-dropzones">' + zones.map(function(zone) {
-                return '<div class="vidinteractivo-dropzone" data-zone="' + escapeHtml(zone) + '"><strong>' + escapeHtml(zone) + '</strong><span></span></div>';
+                return '<div class="vidinteractivo-dropzone" data-zone="' + escapeHtml(zone) + '"><strong>' + escapeHtml(zone) + '</strong><div class="vidinteractivo-dropzone-items"></div></div>';
             }).join('') + '</div>';
+
+        var draggedEl = null;
 
         parts.body.querySelectorAll('.vidinteractivo-draggable').forEach(function(item) {
             item.addEventListener('dragstart', function(e) {
+                draggedEl = item;
+                // Fallback para navegadores antiguos
                 e.dataTransfer.setData('text/plain', item.dataset.item);
             });
-        });
-        parts.body.querySelectorAll('.vidinteractivo-dropzone').forEach(function(zone) {
-            zone.addEventListener('dragover', function(e) { e.preventDefault(); });
-            zone.addEventListener('drop', function(e) {
-                e.preventDefault();
-                var droppedItem = e.dataTransfer.getData('text/plain');
-                // If this item is already in another zone, clear it from there first.
-                parts.body.querySelectorAll('.vidinteractivo-dropzone').forEach(function(other) {
-                    if (other !== zone && other.dataset.item === droppedItem) {
-                        delete other.dataset.item;
-                        other.querySelector('span').textContent = '';
-                    }
-                });
-                zone.dataset.item = droppedItem;
-                zone.querySelector('span').textContent = droppedItem;
+            item.addEventListener('dragend', function() {
+                draggedEl = null;
             });
         });
+
+        parts.body.querySelectorAll('.vidinteractivo-dropzone').forEach(function(zone) {
+            zone.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                zone.classList.add('dragover');
+            });
+            zone.addEventListener('dragleave', function(e) {
+                zone.classList.remove('dragover');
+            });
+            zone.addEventListener('drop', function(e) {
+                e.preventDefault();
+                zone.classList.remove('dragover');
+                if (draggedEl) {
+                    var container = zone.querySelector('.vidinteractivo-dropzone-items') || zone;
+                    container.appendChild(draggedEl);
+                }
+            });
+        });
+
+        var pool = parts.body.querySelector('#vidinteractivo-item-pool');
+        if (pool) {
+            pool.addEventListener('dragover', function(e) { e.preventDefault(); });
+            pool.addEventListener('drop', function(e) {
+                e.preventDefault();
+                if (draggedEl) {
+                    pool.appendChild(draggedEl);
+                }
+            });
+        }
     };
 
     Player.prototype.renderShortAnswer = function(parts, content) {
@@ -503,13 +523,17 @@ function(Ajax, Notification, VideoAdapter) {
         if (type === 'dragdrop') {
             var mapping = {};
             var complete = true;
-            body.querySelectorAll('.vidinteractivo-dropzone').forEach(function(zone) {
-                if (!zone.dataset.item) {
-                    complete = false;
-                } else {
-                    mapping[zone.dataset.item] = zone.dataset.zone;
-                }
-            });
+            var poolItems = body.querySelectorAll('#vidinteractivo-item-pool .vidinteractivo-draggable');
+            if (poolItems && poolItems.length > 0) {
+                complete = false;
+            } else {
+                body.querySelectorAll('.vidinteractivo-dropzone').forEach(function(zone) {
+                    var zoneName = zone.dataset.zone;
+                    zone.querySelectorAll('.vidinteractivo-draggable').forEach(function(item) {
+                        mapping[item.dataset.item] = zoneName;
+                    });
+                });
+            }
             return complete ? JSON.stringify(mapping) : null;
         }
         if (type === 'shortanswer') {
