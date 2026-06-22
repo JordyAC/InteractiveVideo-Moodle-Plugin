@@ -143,7 +143,6 @@ Distribuido bajo la Licencia GNU GPL v3. Consulte el archivo LICENSE para más i
 
 ## Agradecimientos
 
-- Escuela Superior Politécnica de Chimborazo por proporcionar la infraestructura de desarrollo
 - Comunidad de Moodle por el framework LMS de código abierto
 - Proyecto Zotero por servir como caso de uso educativo
 
